@@ -1,0 +1,74 @@
+---
+# Prepare hosts to usage
+- hosts:
+    - all
+  become: true
+
+  roles:
+    - geerlingguy.github-users
+    - geerlingguy.docker
+    - geerlingguy.security
+    - geerlingguy.swap
+  tasks:
+    - name: sudo NOPASSWD
+      ansible.builtin.lineinfile:
+        dest: /etc/sudoers
+        line: "{{ item.name }} ALL=(ALL) NOPASSWD: ALL"
+        validate: /usr/sbin/visudo -cf %s
+      loop: "{{github_users}}"
+    - name: change hostname
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+
+# Setup k8s cluster
+- hosts:
+    - cluster
+  become: true
+  roles:
+    - geerlingguy.kubernetes
+    - geerlingguy.helm
+
+# Deploy helms
+- hosts:
+    - kube_master
+  become: true
+  tasks:
+    - name: add helm diff plugin
+      kubernetes.core.helm_plugin:
+        plugin_path: https://github.com/databus23/helm-diff
+        state: present
+    - name: add prometheus repo
+      kubernetes.core.helm_repository:
+        repo_url: https://prometheus-community.github.io/helm-charts
+        repo_name: prometheus
+    - name: add prometheus
+      kubernetes.core.helm:
+        name: prometheus
+        chart_ref: prometheus/prometheus
+        release_namespace: monitoring
+        create_namespace: true
+        values:
+          alertmanager:
+            persistentVolume:
+              enabled: false
+          server:
+            persistentVolume:
+              enabled: false
+
+    - name: add metallb repo
+      kubernetes.core.helm_repository:
+        repo_url: https://metallb.github.io/metallb
+        repo_name: metallb
+    - name: add metallb
+      kubernetes.core.helm:
+        name: metallb
+        chart_ref: metallb/metallb
+        create_namespace: true
+        release_namespace: default
+        values:
+          configInline:
+            address-pools:
+              - name: default
+                protocol: layer2
+                addresses:
+                  - 192.168.88.0/24

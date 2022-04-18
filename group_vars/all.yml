@@ -1,0 +1,6 @@
+---
+github_users:
+  - name: nett00n
+    groups: sudo
+kubernetes_role: 'node'
+swap_file_state: absent
